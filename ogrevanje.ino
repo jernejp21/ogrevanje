@@ -9,6 +9,7 @@
 /* Includes end */
 
 /* Defines start */
+#define SD_CS PA11
 #define LCD_CS 10
 #define LCD_DC 9
 #define LCD_RES 8
@@ -27,6 +28,8 @@
 #define CRPAKLA_KROG_2_DOUT A0
 #define MES_VENT_HLAD_KROG_2_DOUT A1
 #define MES_VENT_TOPL_KROG_2_DOUT A2
+#define TERMOSTAT_VKLOP_KROG1_DIN PC1
+#define TERMOSTAT_VKLOP_KROG2_DIN PC0
 
 #define DISPLAY_LED A2
 
@@ -34,16 +37,18 @@
 #define STATE_MAIN_SCREEN 1
 #define STATE_MENU_SCREEN 2
 #define STATE_LEAVE_MENU 3
+
+#define MS_V_MIN 1000*60
 /* Defines end */
 
 /* Typedefs start */
 typedef struct
 {
-  uint8_t mes_vent_hlad;
-  uint8_t mes_vent_topl;
+  //uint8_t mes_vent_hlad;
+  //uint8_t mes_vent_topl;
   uint8_t mes_vent_hlad_pin;
   uint8_t mes_vent_topl_pin;
-  uint8_t crpalka;
+  //uint8_t crpalka;
   uint8_t crpalka_pin;
   uint8_t termostat_vklop;
   uint8_t termostat_vklop_pin;
@@ -72,7 +77,7 @@ int8_t enkoder_gumb_pritisnjen;
 
 ogrevalni_krog_t krog1, krog2;
 int8_t temp_hranilnika = 40;
-uint8_t cas_zakasnitve = 1;
+uint8_t cas_zakasnitve = 1; // v minutah
 uint8_t cas_vzorcenja = 1;
 int8_t ki_omejitev = 0;
 
@@ -91,10 +96,12 @@ void narisi_glaven_zaslon(void);
 void izrisi_stran(void);
 void zatemnitev_zaslona();
 void handle_state_machine();
-void stanje_gumbov_zaslona();
+void preberi_vhodne_signale();
 void dobi_temperaturo();
 uint8_t pid_zanka(ogrevalni_krog_t *krog);
 void narisi_zaslon();
+void krmiljenje_ventilov(ogrevalni_krog_t *krog);
+void shrani_dnevnik();
 /* Functions prototypes end */
 
 /* MUI definition */
@@ -226,13 +233,13 @@ void narisi_glaven_zaslon() {
   u8g2.drawXBMP(0, 0, LCD_BITMAP_WIDTH, LCD_BITMAP_HEIGHT, lcd_shema);
   u8g2.setCursor(0, 8);
   u8g2.print("T3= ");
-  u8g2.print(40);
+  u8g2.print(temp_hranilnika);
   u8g2.print("C");
   u8g2.print("  T4= ");
-  u8g2.print(35);
+  u8g2.print((int)(krog1.temp_kroga));
   u8g2.print("C");
   u8g2.print("  T6= ");
-  u8g2.print(28);
+  u8g2.print((int)(krog2.temp_kroga));
   u8g2.print("C");
 }
 
@@ -255,8 +262,10 @@ void izrisi_stran(void) {
 }
 
 void zatemnitev_zaslona() {
-  if ((millis() - gumb_cas) > cas_zakasnitve * 1000) {
+  if ((millis() - gumb_cas) > cas_zakasnitve * MS_V_MIN) {
     digitalWrite(DISPLAY_LED, 0);
+    state_machine = STATE_LEAVE_MENU;
+    handle_state_machine();
   }
 }
 
@@ -293,7 +302,10 @@ void handle_state_machine() {
   }
 }
 
-void stanje_gumbov_zaslona() {
+void preberi_vhodne_signale() {
+
+  krog1.termostat_vklop = digitalRead(TERMOSTAT_VKLOP_KROG1_DIN);
+  krog2.termostat_vklop = digitalRead(TERMOSTAT_VKLOP_KROG2_DIN);
   encoder.ReadEncoder();
 
   if (enkoder_smer == ENKODER_ROTACIJA_KONT_URA) {
@@ -376,6 +388,38 @@ void narisi_zaslon() {
   }
 }
 
+void krmiljenje_ventilov(ogrevalni_krog_t *krog) {
+  if (krog->termostat_vklop) {
+    digitalWrite(krog->crpalka_pin, HIGH);
+    uint8_t ventil_smer = pid_zanka(krog);
+
+    if (ventil_smer == -1) {  // hladna voda
+      digitalWrite(krog->mes_vent_hlad_pin, HIGH);
+      digitalWrite(krog->mes_vent_topl_pin, LOW);
+    }
+    if (ventil_smer == 0) {  // pusti ventil v trenutni poziciji
+      digitalWrite(krog->mes_vent_hlad_pin, LOW);
+      digitalWrite(krog->mes_vent_topl_pin, LOW);
+    }
+    if (ventil_smer == 1) {  // topla voda
+      digitalWrite(krog->mes_vent_hlad_pin, LOW);
+      digitalWrite(krog->mes_vent_topl_pin, HIGH);
+    }
+  }
+  else {
+    // TODO
+    // Najprej se mora zapreti mešalni ventil, šele potem se ugasne črpalka.
+    // Mešalni ventil se zapira, črpalka pa deluje še 5 min po signalu za izklop.
+    digitalWrite(krog->mes_vent_hlad_pin, LOW);
+    
+    digitalWrite(krog->crpalka_pin, LOW);
+  }
+}
+
+void shrani_dnevnik() {
+
+}
+
 void setup() {
   // put your setup code here, to run once:
 
@@ -383,16 +427,28 @@ void setup() {
 
   pinMode(DISPLAY_LED, OUTPUT);
 
+  krog1.crpalka_pin = CRPAKLA_KROG_1_DOUT;
   digitalWrite(CRPAKLA_KROG_1_DOUT, LOW);
+  
+  krog1.mes_vent_hlad_pin = MES_VENT_HLAD_KROG_1_DOUT;
   digitalWrite(MES_VENT_HLAD_KROG_1_DOUT, LOW);
+  
+  krog1.mes_vent_topl_pin = MES_VENT_TOPL_KROG_1_DOUT;
   digitalWrite(MES_VENT_TOPL_KROG_1_DOUT, LOW);
+  
   pinMode(CRPAKLA_KROG_1_DOUT, OUTPUT);
   pinMode(MES_VENT_HLAD_KROG_1_DOUT, OUTPUT);
   pinMode(MES_VENT_TOPL_KROG_1_DOUT, OUTPUT);
 
+  krog2.crpalka_pin = CRPAKLA_KROG_2_DOUT;
   digitalWrite(CRPAKLA_KROG_2_DOUT, LOW);
+
+  krog2.mes_vent_hlad_pin = MES_VENT_HLAD_KROG_2_DOUT;
   digitalWrite(MES_VENT_HLAD_KROG_2_DOUT, LOW);
+
+  krog2.mes_vent_topl_pin = MES_VENT_TOPL_KROG_2_DOUT;
   digitalWrite(MES_VENT_TOPL_KROG_2_DOUT, LOW);
+  
   pinMode(CRPAKLA_KROG_2_DOUT, OUTPUT);
   pinMode(MES_VENT_HLAD_KROG_2_DOUT, OUTPUT);
   pinMode(MES_VENT_TOPL_KROG_2_DOUT, OUTPUT);
@@ -400,6 +456,9 @@ void setup() {
   pinMode(TEMP_KROG_1_AIN, INPUT);
   pinMode(TEMP_KROG_2_AIN, INPUT);
   pinMode(TEMP_ZALOG_AIN, INPUT);
+
+  pinMode(TERMOSTAT_VKLOP_KROG1_DIN, INPUT_PULLDOWN);
+  pinMode(TERMOSTAT_VKLOP_KROG2_DIN, INPUT_PULLDOWN);
   /* Pin setup end*/
 
   /* Display setup */
@@ -422,9 +481,17 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
+  static unsigned long int pid_zanka_cas = 0;
   zatemnitev_zaslona();
-  stanje_gumbov_zaslona();
+  preberi_vhodne_signale();
   dobi_temperaturo(); //TODO
-  pid_zanka(&krog1); //TODO
+
+  if ((millis() - pid_zanka_cas) > 1000) {
+    pid_zanka_cas = millis();
+    krmiljenje_ventilov(&krog1);
+    krmiljenje_ventilov(&krog2);
+  }
+
+  shrani_dnevnik(); //TODO
   narisi_zaslon();
 }
