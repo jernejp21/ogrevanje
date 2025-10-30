@@ -4,6 +4,7 @@
 #include <MUIU8g2.h>
 #include <SPI.h>
 #include <Versatile_RotaryEncoder.h>
+#include <SD.h>
 
 #include "sistem.h"
 /* Includes end */
@@ -31,7 +32,7 @@
 #define TERMOSTAT_VKLOP_KROG1_DIN PC1
 #define TERMOSTAT_VKLOP_KROG2_DIN PC0
 
-#define DISPLAY_LED A2
+#define DISPLAY_LED PD9
 
 #define STATE_IDLE 0
 #define STATE_MAIN_SCREEN 1
@@ -39,6 +40,12 @@
 #define STATE_LEAVE_MENU 3
 
 #define MS_V_MIN 1000*60
+#define KP_FAKTOR 10
+#define KI_FAKTOR 0.1
+#define KD_FAKTOR 100
+
+#define UPOR 1000 // omov
+#define ADC_MAX_VREDNOST 4096
 /* Defines end */
 
 /* Typedefs start */
@@ -62,6 +69,7 @@ typedef struct
   float odvod;
   uint8_t mrtvi_hod;
   float napaka_prej;
+  int8_t ventil_smer;
 } ogrevalni_krog_t;
 /* Typedefs end */
 
@@ -79,7 +87,7 @@ ogrevalni_krog_t krog1, krog2;
 int8_t temp_hranilnika = 40;
 uint8_t cas_zakasnitve = 1; // v minutah
 uint8_t cas_vzorcenja = 1;
-int8_t ki_omejitev = 0;
+float ki_omejitev = 0;
 
 uint8_t state_machine;
 unsigned long int prejsnji_cas;
@@ -101,34 +109,33 @@ void dobi_temperaturo();
 uint8_t pid_zanka(ogrevalni_krog_t *krog);
 void narisi_zaslon();
 void krmiljenje_ventilov(ogrevalni_krog_t *krog);
-void shrani_dnevnik();
+void shrani_dnevnik(ogrevalni_krog_t *krog);
 /* Functions prototypes end */
 
 /* MUI definition */
 MUIU8G2 mui;
 
 muif_t muif_list[] = {
-  MUIF_U8G2_FONT_STYLE(0, u8g2_font_helvR08_tr),
-  MUIF_U8G2_FONT_STYLE(1, u8g2_font_helvB08_tr),
+  MUIF_U8G2_FONT_STYLE(0, u8g2_font_helvR08_te),
+  MUIF_U8G2_FONT_STYLE(1, u8g2_font_helvB08_te),
 
   MUIF_RO("HR", mui_hrule),
   MUIF_U8G2_LABEL(),
   MUIF_RO("GP", mui_u8g2_goto_data),
   MUIF_BUTTON("GC", mui_u8g2_goto_form_w1_pi),
 
-  MUIF_U8G2_U8_MIN_MAX("P1", &krog1.Kp, 0, 10, mui_u8g2_u8_min_max_wm_mud_pi),
-  MUIF_U8G2_U8_MIN_MAX("I1", &krog1.Ki, 0, 10, mui_u8g2_u8_min_max_wm_mud_pi),
+  MUIF_U8G2_U8_MIN_MAX("P1", &krog1.Kp, 1, 10, mui_u8g2_u8_min_max_wm_mud_pi),
+  MUIF_U8G2_U8_MIN_MAX("I1", &krog1.Ki, 1, 10, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_U8_MIN_MAX("D1", &krog1.Kd, 0, 10, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_U8_MIN_MAX("T1", &krog1.temp_zelena, 15, 80, mui_u8g2_u8_min_max_wm_mud_pi),
 
-  MUIF_U8G2_U8_MIN_MAX("P2", &krog2.Kp, 0, 10, mui_u8g2_u8_min_max_wm_mud_pi),
-  MUIF_U8G2_U8_MIN_MAX("I2", &krog2.Ki, 0, 10, mui_u8g2_u8_min_max_wm_mud_pi),
+  MUIF_U8G2_U8_MIN_MAX("P2", &krog2.Kp, 1, 10, mui_u8g2_u8_min_max_wm_mud_pi),
+  MUIF_U8G2_U8_MIN_MAX("I2", &krog2.Ki, 1, 10, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_U8_MIN_MAX("D2", &krog2.Kd, 0, 10, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_U8_MIN_MAX("T2", &krog2.temp_zelena, 15, 80, mui_u8g2_u8_min_max_wm_mud_pi),
 
   MUIF_U8G2_U8_MIN_MAX("TZ", &cas_zakasnitve, 0, 60, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_S8_MIN_MAX("TH", &temp_hranilnika, 20, 80, mui_u8g2_u8_min_max_wm_mud_pi),
-  MUIF_U8G2_S8_MIN_MAX("KO", &ki_omejitev, 1, 20, mui_u8g2_u8_min_max_wm_mud_pi),
 
   /* a button for the menu... */
   MUIF_BUTTON("GO", mui_u8g2_btn_goto_wm_fi),
@@ -188,12 +195,10 @@ fds_t fds_data[] =
   MUI_LABEL(5, 8, "Nastavitve")
   MUI_STYLE(0)
   MUI_XY("HR", 0, 11)
-  MUI_LABEL(5, 23, "Cas zaslona:")
+  MUI_LABEL(5, 23, "Čas zaslona:")
   MUI_LABEL(5, 35, "Temp. hranilnika:")
-  MUI_LABEL(5, 47, "Ki omejitev:")
   MUI_XY("TZ", 70, 23)
   MUI_XY("TH", 90, 35)
-  MUI_XY("KO", 80, 47)
   MUI_XYT("BK", 20, 60, " Nazaj ")
   
   MUI_FORM(250)
@@ -234,13 +239,13 @@ void narisi_glaven_zaslon() {
   u8g2.setCursor(0, 8);
   u8g2.print("T3= ");
   u8g2.print(temp_hranilnika);
-  u8g2.print("C");
-  u8g2.print("  T4= ");
+  u8g2.print("°C");
+  u8g2.print(" T4= ");
   u8g2.print((int)(krog1.temp_kroga));
-  u8g2.print("C");
-  u8g2.print("  T6= ");
+  u8g2.print("°C");
+  u8g2.print(" T6= ");
   u8g2.print((int)(krog2.temp_kroga));
-  u8g2.print("C");
+  u8g2.print("°C");
 }
 
 void izrisi_stran(void) {
@@ -262,7 +267,7 @@ void izrisi_stran(void) {
 }
 
 void zatemnitev_zaslona() {
-  if ((millis() - gumb_cas) > cas_zakasnitve * MS_V_MIN) {
+  if ((millis() - gumb_cas) > cas_zakasnitve * MS_V_MIN && state_machine != STATE_IDLE) {
     digitalWrite(DISPLAY_LED, 0);
     state_machine = STATE_LEAVE_MENU;
     handle_state_machine();
@@ -294,7 +299,7 @@ void handle_state_machine() {
       Serial.println("STATE: STATE_LEAVE_MENU");
       mui.saveForm();
       mui.leaveForm();
-      state_machine = STATE_MAIN_SCREEN;
+      state_machine = STATE_IDLE;
       break;
 
     default:
@@ -327,19 +332,40 @@ void preberi_vhodne_signale() {
 
     ali_narisem = 1;
     enkoder_gumb_pritisnjen = 0;
+    if (state_machine == STATE_IDLE) {
+      state_machine = STATE_MAIN_SCREEN;
+    }
     handle_state_machine();
   }
 }
-
+uint32_t ain;
+float upor;
 void dobi_temperaturo() {
+  //uint32_t ain;
 
+  analogReadResolution(12);
+  ain = analogRead(krog1.temp_kroga_pin);
+  //Serial.print("Senzor1: ");
+  //Serial.println(ain);
+  upor = (float)(ain * UPOR) / (float)(ADC_MAX_VREDNOST - ain);
+  krog1.temp_kroga = (upor - 1000) * 100 / 385;
+
+  analogReadResolution(12);
+  ain = analogRead(krog2.temp_kroga_pin);
+  //Serial.print("Senzor2: ");
+  //Serial.println(ain);
+  upor = (float)(ain * UPOR) / (float)(ADC_MAX_VREDNOST - ain);
+  krog2.temp_kroga = (upor - 1000) * 100 / 385;
 }
 
+float pid_temp;
 uint8_t pid_zanka(ogrevalni_krog_t *krog) {
   uint8_t ukaz = 0;
   float napaka = (float)krog->temp_zelena - (float)krog->temp_kroga;
 
   krog->integral += napaka;
+
+  ki_omejitev = 100 / krog->Ki / KI_FAKTOR;
 
   if (krog->integral > ki_omejitev) {
     krog->integral = ki_omejitev;
@@ -351,7 +377,7 @@ uint8_t pid_zanka(ogrevalni_krog_t *krog) {
   //der = der + 0.05 *(Kd * (napaka - napaka_prej) - der)
   krog->odvod = napaka - krog->napaka_prej;
 
-  float pid_temp = napaka * krog->Kp + krog->integral * krog->Ki + krog->odvod * krog->Kd;
+  pid_temp = (float)(napaka * krog->Kp * KP_FAKTOR) + (float)(krog->integral * krog->Ki * KI_FAKTOR) + (float)(krog->odvod * krog->Kd * KD_FAKTOR);
 
   if (abs(krog->temp_kroga - pid_temp) < krog->mrtvi_hod) {
     ukaz = 0;
@@ -371,27 +397,30 @@ uint8_t pid_zanka(ogrevalni_krog_t *krog) {
 }
 
 void narisi_zaslon() {
-  if (mui.isFormActive()) {
-
-    /* menu is active: draw the menu */
+  if (ali_narisem) {
     encoder.ReadEncoder();
-    if (ali_narisem) {
+    if (mui.isFormActive()) {
       u8g2.firstPage();
       do {
         mui.draw();
       } while (u8g2.nextPage());
-      ali_narisem = 0;
     }
-  } else {
-    /* menu not active: show something */
-    izrisi_stran();
+    else {
+      //izrisi_stran(); // glavnna stran
+      u8g2.firstPage();
+      do {
+        narisi_glaven_zaslon();
+      } while (u8g2.nextPage());
+    }
+    ali_narisem = 0;
   }
 }
 
 void krmiljenje_ventilov(ogrevalni_krog_t *krog) {
   if (krog->termostat_vklop) {
     digitalWrite(krog->crpalka_pin, HIGH);
-    uint8_t ventil_smer = pid_zanka(krog);
+    int8_t ventil_smer = pid_zanka(krog);
+    krog->ventil_smer = ventil_smer;
 
     if (ventil_smer == -1) {  // hladna voda
       digitalWrite(krog->mes_vent_hlad_pin, HIGH);
@@ -410,13 +439,38 @@ void krmiljenje_ventilov(ogrevalni_krog_t *krog) {
     // TODO
     // Najprej se mora zapreti mešalni ventil, šele potem se ugasne črpalka.
     // Mešalni ventil se zapira, črpalka pa deluje še 5 min po signalu za izklop.
-    digitalWrite(krog->mes_vent_hlad_pin, LOW);
+    //digitalWrite(krog->mes_vent_hlad_pin, LOW);
     
     digitalWrite(krog->crpalka_pin, LOW);
   }
 }
 
-void shrani_dnevnik() {
+String log_name;
+
+void shrani_dnevnik(ogrevalni_krog_t *krog) {
+  if (krog->termostat_vklop) {
+    String dataString;
+    dataString += String(krog->temp_zelena);
+    dataString += ";";
+    dataString += String(krog->temp_kroga);
+    dataString += ";";
+    dataString += String(krog->ventil_smer);
+    if (SD.begin(SD_CS)) {
+      //Serial.println("SD kartica pripravljena.");
+      File dataFile = SD.open("datalog.txt", FILE_WRITE);
+      if (dataFile) {
+        dataFile.println(dataString);
+        dataFile.close();
+        //Serial.println(dataString);
+      }
+    }
+    else {
+      //Serial.println("Ni SD Kartice.");
+    }
+  }
+  else {
+    log_name = "test1.txt";
+  }
 
 }
 
@@ -453,7 +507,9 @@ void setup() {
   pinMode(MES_VENT_HLAD_KROG_2_DOUT, OUTPUT);
   pinMode(MES_VENT_TOPL_KROG_2_DOUT, OUTPUT);
 
+  krog1.temp_kroga_pin = TEMP_KROG_1_AIN;
   pinMode(TEMP_KROG_1_AIN, INPUT);
+  krog2.temp_kroga_pin = TEMP_KROG_2_AIN;
   pinMode(TEMP_KROG_2_AIN, INPUT);
   pinMode(TEMP_ZALOG_AIN, INPUT);
 
@@ -466,6 +522,7 @@ void setup() {
   u8g2.setFont(u8g2_font_profont10_tf);
   u8g2.setContrast(40);
   mui.begin(u8g2, fds_data, muif_list, sizeof(muif_list) / sizeof(muif_t));
+  u8g2.enableUTF8Print();
   /* Display setup end */
 
   /* Encoder setup */
@@ -474,6 +531,17 @@ void setup() {
   /* Encoder setup end */
 
   state_machine = STATE_MAIN_SCREEN;
+  krog1.Kp = 3;
+  krog1.Ki = 10;
+  krog1.Kd = 2;
+  krog1.temp_zelena = 45;
+  krog1.mrtvi_hod = 2;
+
+  krog2.Kp = 1;
+  krog2.Ki = 3;
+  krog2.Kd = 1;
+  krog2.temp_zelena = 28;
+  krog2.mrtvi_hod = 2;
 
   Serial.begin(9600);
   Serial.println("Začetek programa.");
@@ -490,8 +558,10 @@ void loop() {
     pid_zanka_cas = millis();
     krmiljenje_ventilov(&krog1);
     krmiljenje_ventilov(&krog2);
+    shrani_dnevnik(&krog1);
+    //shrani_dnevnik(&krog2);
+    ali_narisem = 1;
   }
 
-  shrani_dnevnik(); //TODO
   narisi_zaslon();
 }
