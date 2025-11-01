@@ -223,15 +223,31 @@ uint8_t izhod_iz_menija(mui_t *ui, uint8_t msg) {
 }
 
 void obravnavaj_vrtenje(int8_t rotation) {
-  enkoder_smer = rotation;
   gumb_cas = millis();
   digitalWrite(DISPLAY_LED, 1);
+
+  if (rotation == ENKODER_ROTACIJA_KONT_URA) {
+    mui.prevField();
+    ali_narisem = 1;
+  }
+  if (rotation == ENKODER_ROTACIJA_URA) {
+    mui.nextField();
+    ali_narisem = 1;;
+  }
 }
 
 void obravnavaj_gumb() {
-  enkoder_gumb_pritisnjen = 1;
   gumb_cas = millis();
   digitalWrite(DISPLAY_LED, 1);
+
+  Serial.println("Gumb je pritisnjen.");
+  mui.sendSelect();
+
+  ali_narisem = 1;
+  if (state_machine == STATE_IDLE) {
+    state_machine = STATE_MAIN_SCREEN;
+  }
+  handle_state_machine();
 }
 
 void narisi_glaven_zaslon() {
@@ -312,31 +328,6 @@ void preberi_vhodne_signale() {
   krog1.termostat_vklop = digitalRead(TERMOSTAT_VKLOP_KROG1_DIN);
   krog2.termostat_vklop = digitalRead(TERMOSTAT_VKLOP_KROG2_DIN);
   encoder.ReadEncoder();
-
-  if (enkoder_smer == ENKODER_ROTACIJA_KONT_URA) {
-    Serial.println("Vrtim v levo.");
-    mui.prevField();
-    ali_narisem = 1;
-    enkoder_smer = ENKODER_ROTACIJA_BREZ;
-  }
-  if (enkoder_smer == ENKODER_ROTACIJA_URA) {
-    Serial.println("Vrtim v desno.");
-    mui.nextField();
-    ali_narisem = 1;
-    enkoder_smer = ENKODER_ROTACIJA_BREZ;
-  }
-
-  if (enkoder_gumb_pritisnjen) {
-    Serial.println("Gumb je pritisnjen.");
-    mui.sendSelect();
-
-    ali_narisem = 1;
-    enkoder_gumb_pritisnjen = 0;
-    if (state_machine == STATE_IDLE) {
-      state_machine = STATE_MAIN_SCREEN;
-    }
-    handle_state_machine();
-  }
 }
 uint32_t ain;
 float upor;
@@ -398,20 +389,15 @@ uint8_t pid_zanka(ogrevalni_krog_t *krog) {
 
 void narisi_zaslon() {
   if (ali_narisem) {
-    encoder.ReadEncoder();
-    if (mui.isFormActive()) {
-      u8g2.firstPage();
-      do {
+    u8g2.firstPage();
+    do {
+      if (mui.isFormActive()) {
         mui.draw();
-      } while (u8g2.nextPage());
-    }
-    else {
-      //izrisi_stran(); // glavnna stran
-      u8g2.firstPage();
-      do {
+      }
+      else {
         narisi_glaven_zaslon();
-      } while (u8g2.nextPage());
-    }
+      }
+    } while (u8g2.nextPage());
     ali_narisem = 0;
   }
 }
