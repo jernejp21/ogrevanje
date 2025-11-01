@@ -33,9 +33,11 @@
 #define TERMOSTAT_VKLOP_KROG2_DIN PC0
 
 #define DISPLAY_LED PD9
+#define EKRAN_GLAVNI_ZASLON 0
+#define EKRAN_MENI_ZASLON 1
 
 #define STATE_IDLE 0
-#define STATE_MAIN_SCREEN 1
+#define STATE_ACTIVE_SCREEN 1
 #define STATE_MENU_SCREEN 2
 #define STATE_LEAVE_MENU 3
 
@@ -93,6 +95,7 @@ uint8_t state_machine;
 unsigned long int prejsnji_cas;
 uint8_t ali_narisem = 1;
 unsigned long gumb_cas;
+uint8_t g_prikazi_stran;
 /* Global variables declarations end */
 
 /* Functions prototypes start */
@@ -224,33 +227,36 @@ uint8_t izhod_iz_menija(mui_t *ui, uint8_t msg) {
 
 void obravnavaj_vrtenje(int8_t rotation) {
   gumb_cas = millis();
-  digitalWrite(DISPLAY_LED, 1);
+  ali_narisem = 1;
 
-  if (rotation == ENKODER_ROTACIJA_KONT_URA) {
-    mui.prevField();
-    ali_narisem = 1;
+  if (state_machine == STATE_IDLE) {
+    state_machine = STATE_ACTIVE_SCREEN;
   }
-  if (rotation == ENKODER_ROTACIJA_URA) {
-    mui.nextField();
-    ali_narisem = 1;;
+
+  if (state_machine == STATE_MENU_SCREEN) {
+    if (rotation == ENKODER_ROTACIJA_KONT_URA) {
+      mui.prevField();
+    }
+    if (rotation == ENKODER_ROTACIJA_URA) {
+      mui.nextField();
+    }
   }
 }
 
 void obravnavaj_gumb() {
   gumb_cas = millis();
-  digitalWrite(DISPLAY_LED, 1);
-
-  Serial.println("Gumb je pritisnjen.");
-  mui.sendSelect();
-
   ali_narisem = 1;
-  if (state_machine == STATE_IDLE) {
-    state_machine = STATE_MAIN_SCREEN;
+
+  if (state_machine == STATE_MENU_SCREEN) {
+    mui.sendSelect();
   }
-  handle_state_machine();
+  if (state_machine != STATE_MENU_SCREEN) {
+    state_machine = STATE_MENU_SCREEN;
+  }
 }
 
 void narisi_glaven_zaslon() {
+  u8g2.setFont(u8g2_font_helvR08_te);
   u8g2.drawXBMP(0, 0, LCD_BITMAP_WIDTH, LCD_BITMAP_HEIGHT, lcd_shema);
   u8g2.setCursor(0, 8);
   u8g2.print("T3= ");
@@ -284,38 +290,37 @@ void izrisi_stran(void) {
 
 void zatemnitev_zaslona() {
   if ((millis() - gumb_cas) > cas_zakasnitve * MS_V_MIN && state_machine != STATE_IDLE) {
+    state_machine = STATE_IDLE;
     digitalWrite(DISPLAY_LED, 0);
-    state_machine = STATE_LEAVE_MENU;
-    handle_state_machine();
   }
 }
 
 void handle_state_machine() {
   switch (state_machine) {
     case STATE_IDLE:
+      g_prikazi_stran = EKRAN_GLAVNI_ZASLON;
+      digitalWrite(DISPLAY_LED, 0);
       break;
     
-    case STATE_MAIN_SCREEN:
-      state_machine = STATE_MENU_SCREEN;
-      Serial.println("STATE: STATE_MAIN_SCREEN");
-      mui.gotoForm(1, 0);
+    case STATE_ACTIVE_SCREEN:
+      g_prikazi_stran = EKRAN_GLAVNI_ZASLON;
+      digitalWrite(DISPLAY_LED, 1);
       break;
 
     case STATE_MENU_SCREEN:
-      Serial.println("STATE: STATE_MENU_SCREEN");
+      g_prikazi_stran = EKRAN_MENI_ZASLON;
+      digitalWrite(DISPLAY_LED, 1);
       if (!mui.isFormActive()) {
-        Serial.println("Forma ni aktivna");
-        state_machine = STATE_MAIN_SCREEN;
-      } else {
-        Serial.println("Forma je aktivna");
+        mui.gotoForm(1, 0);
       }
       break;
 
     case STATE_LEAVE_MENU:
-      Serial.println("STATE: STATE_LEAVE_MENU");
-      mui.saveForm();
-      mui.leaveForm();
-      state_machine = STATE_IDLE;
+      if (mui.isFormActive()) {
+        mui.leaveForm();
+      }
+      state_machine = STATE_ACTIVE_SCREEN;
+      ali_narisem = 1;
       break;
 
     default:
@@ -391,11 +396,17 @@ void narisi_zaslon() {
   if (ali_narisem) {
     u8g2.firstPage();
     do {
-      if (mui.isFormActive()) {
-        mui.draw();
-      }
-      else {
-        narisi_glaven_zaslon();
+      switch (g_prikazi_stran) {
+        case EKRAN_GLAVNI_ZASLON:
+          narisi_glaven_zaslon();
+          break;
+
+        case EKRAN_MENI_ZASLON:
+          mui.draw();
+          break;
+
+        default:
+          break;
       }
     } while (u8g2.nextPage());
     ali_narisem = 0;
@@ -505,7 +516,6 @@ void setup() {
 
   /* Display setup */
   u8g2.begin(ENC_BT, ENC_A, ENC_B);
-  u8g2.setFont(u8g2_font_profont10_tf);
   u8g2.setContrast(40);
   mui.begin(u8g2, fds_data, muif_list, sizeof(muif_list) / sizeof(muif_t));
   u8g2.enableUTF8Print();
@@ -516,7 +526,7 @@ void setup() {
   encoder.setHandlePressRelease(obravnavaj_gumb);
   /* Encoder setup end */
 
-  state_machine = STATE_MAIN_SCREEN;
+  state_machine = STATE_IDLE;
   krog1.Kp = 3;
   krog1.Ki = 10;
   krog1.Kd = 2;
@@ -529,7 +539,7 @@ void setup() {
   krog2.temp_zelena = 28;
   krog2.mrtvi_hod = 2;
 
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("Začetek programa.");
 }
 
@@ -538,6 +548,7 @@ void loop() {
   static unsigned long int pid_zanka_cas = 0;
   zatemnitev_zaslona();
   preberi_vhodne_signale();
+  handle_state_machine();
   dobi_temperaturo(); //TODO
 
   if ((millis() - pid_zanka_cas) > 1000) {
