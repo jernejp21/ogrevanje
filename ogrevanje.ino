@@ -60,7 +60,7 @@ typedef struct
   //uint8_t crpalka;
   uint8_t crpalka_pin;
   uint8_t termostat_vklop;
-  uint8_t termostat_vklop_pin;
+  //uint8_t termostat_vklop_pin;
   float temp_kroga;
   uint8_t temp_kroga_pin;
   uint8_t temp_zelena;
@@ -72,6 +72,8 @@ typedef struct
   uint8_t mrtvi_hod;
   float napaka_prej;
   int8_t ventil_smer;
+  char ime_kroga[8];
+  uint8_t st_dnevnika;
 } ogrevalni_krog_t;
 /* Typedefs end */
 
@@ -85,7 +87,8 @@ Versatile_RotaryEncoder encoder(ENC_A, ENC_B, ENC_BT);
 int8_t enkoder_smer;
 int8_t enkoder_gumb_pritisnjen;
 
-ogrevalni_krog_t krog1, krog2;
+ogrevalni_krog_t krog1 = {.ime_kroga="krog1"};
+ogrevalni_krog_t krog2 = {.ime_kroga="krog2"};
 int8_t temp_hranilnika = 40;
 uint8_t cas_zakasnitve = 1; // v minutah
 uint8_t cas_vzorcenja = 1;
@@ -442,10 +445,10 @@ void krmiljenje_ventilov(ogrevalni_krog_t *krog) {
   }
 }
 
-String log_name;
-
 void shrani_dnevnik(ogrevalni_krog_t *krog) {
   if (krog->termostat_vklop) {
+    String log_name = krog->ime_kroga;
+    log_name += "_" + String(krog->st_dnevnika) + ".log";
     String dataString;
     dataString += String(krog->temp_zelena);
     dataString += ";";
@@ -453,8 +456,8 @@ void shrani_dnevnik(ogrevalni_krog_t *krog) {
     dataString += ";";
     dataString += String(krog->ventil_smer);
     if (SD.begin(SD_CS)) {
-      //Serial.println("SD kartica pripravljena.");
-      File dataFile = SD.open("datalog.txt", FILE_WRITE);
+      Serial.println("SD kartica pripravljena.");
+      File dataFile = SD.open(log_name, FILE_WRITE);
       if (dataFile) {
         dataFile.println(dataString);
         dataFile.close();
@@ -462,11 +465,11 @@ void shrani_dnevnik(ogrevalni_krog_t *krog) {
       }
     }
     else {
-      //Serial.println("Ni SD Kartice.");
+      Serial.println("Ni SD Kartice.");
     }
   }
   else {
-    log_name = "test1.txt";
+    //log_name = "test1.txt";
   }
 
 }
@@ -556,7 +559,7 @@ void loop() {
     krmiljenje_ventilov(&krog1);
     krmiljenje_ventilov(&krog2);
     shrani_dnevnik(&krog1);
-    //shrani_dnevnik(&krog2);
+    shrani_dnevnik(&krog2);
     ali_narisem = 1;
   }
 
