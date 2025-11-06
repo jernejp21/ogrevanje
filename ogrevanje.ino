@@ -74,6 +74,7 @@ typedef struct
   int8_t ventil_smer;
   char ime_kroga[8];
   uint8_t st_dnevnika;
+  uint8_t povecam_dnevnik;
 } ogrevalni_krog_t;
 /* Typedefs end */
 
@@ -142,6 +143,7 @@ muif_t muif_list[] = {
 
   MUIF_U8G2_U8_MIN_MAX("TZ", &cas_zakasnitve, 0, 60, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_S8_MIN_MAX("TH", &temp_hranilnika, 20, 80, mui_u8g2_u8_min_max_wm_mud_pi),
+  MUIF_U8G2_U8_MIN_MAX("MH", &krog1.mrtvi_hod, 0, 5, mui_u8g2_u8_min_max_wm_mud_pi),
 
   /* a button for the menu... */
   MUIF_BUTTON("GO", mui_u8g2_btn_goto_wm_fi),
@@ -175,10 +177,11 @@ fds_t fds_data[] =
   MUI_LABEL(5, 35, "I konstanta:")
   MUI_LABEL(5, 47, "D konstanta:")
   MUI_LABEL(5, 59, "Temp. kroga:")
+  MUI_LABEL(78, 59, "°C")
   MUI_XY("P1", 70, 23)
   MUI_XY("I1", 70, 35)
   MUI_XY("D1", 70, 47)
-  MUI_XY("T1", 70, 59)
+  MUI_XY("T1", 65, 59)
   MUI_XYT("BK", 110, 59, " Nazaj ")
   
   MUI_FORM(21)
@@ -190,10 +193,11 @@ fds_t fds_data[] =
   MUI_LABEL(5, 35, "I konstanta:")
   MUI_LABEL(5, 47, "D konstanta:")
   MUI_LABEL(5, 59, "Temp. kroga:")
+  MUI_LABEL(78, 59, "°C")
   MUI_XY("P2", 70, 23)
   MUI_XY("I2", 70, 35)
   MUI_XY("D2", 70, 47)
-  MUI_XY("T2", 70, 59)
+  MUI_XY("T2", 65, 59)
   MUI_XYT("BK", 110, 59, " Nazaj ")
   
   MUI_FORM(30)
@@ -202,9 +206,14 @@ fds_t fds_data[] =
   MUI_STYLE(0)
   MUI_XY("HR", 0, 11)
   MUI_LABEL(5, 23, "Čas zaslona:")
+  MUI_LABEL(84, 23, "min")
   MUI_LABEL(5, 35, "Temp. hranilnika:")
+  MUI_LABEL(98, 35, "°C")
+  MUI_LABEL(5, 47, "Mrtvi hod:")
+  MUI_LABEL(71, 47, "°C")
   MUI_XY("TZ", 70, 23)
-  MUI_XY("TH", 90, 35)
+  MUI_XY("TH", 85, 35)
+  MUI_XY("MH", 58, 47)
   MUI_XYT("BK", 20, 60, " Nazaj ")
   
   MUI_FORM(250)
@@ -225,6 +234,7 @@ uint8_t mui_hrule(mui_t *ui, uint8_t msg) {
 
 uint8_t izhod_iz_menija(mui_t *ui, uint8_t msg) {
   state_machine = STATE_LEAVE_MENU;
+  krog2.mrtvi_hod = krog1.mrtvi_hod;
   return 0;
 }
 
@@ -445,31 +455,45 @@ void krmiljenje_ventilov(ogrevalni_krog_t *krog) {
   }
 }
 
-void shrani_dnevnik(ogrevalni_krog_t *krog) {
-  if (krog->termostat_vklop) {
-    String log_name = krog->ime_kroga;
-    log_name += "_" + String(krog->st_dnevnika) + ".log";
-    String dataString;
-    dataString += String(krog->temp_zelena);
-    dataString += ";";
-    dataString += String(krog->temp_kroga);
-    dataString += ";";
-    dataString += String(krog->ventil_smer);
-    if (SD.begin(SD_CS)) {
-      Serial.println("SD kartica pripravljena.");
-      File dataFile = SD.open(log_name, FILE_WRITE);
+void zapisi_na_kartico(String dnevnik, String zapis) {
+  if (SD.begin(SD_CS)) {
+      File dataFile = SD.open(dnevnik, FILE_WRITE);
       if (dataFile) {
-        dataFile.println(dataString);
+        dataFile.println(zapis);
         dataFile.close();
-        //Serial.println(dataString);
       }
     }
-    else {
-      Serial.println("Ni SD Kartice.");
+}
+
+void shrani_dnevnik(ogrevalni_krog_t *krog) {
+  if (krog->termostat_vklop) {
+    String log_name;
+    
+    String dataString;
+    dataString += String(krog->temp_zelena);
+    dataString += ",";
+    dataString += String(krog->temp_kroga);
+    dataString += ",";
+    dataString += String(krog->ventil_smer);
+
+    if (krog->povecam_dnevnik) {
+      krog->st_dnevnika++;
+      krog->povecam_dnevnik = 0;
+      String csv_glava = "T_zelena,T_tren,ventil";
+      log_name = krog->ime_kroga;
+      log_name += "_" + String(krog->st_dnevnika) + ".csv";
+      zapisi_na_kartico(log_name, csv_glava);
     }
+    
+    log_name = krog->ime_kroga;
+    log_name += "_" + String(krog->st_dnevnika) + ".csv";
+    zapisi_na_kartico(log_name, dataString);
   }
   else {
-    //log_name = "test1.txt";
+    krog->povecam_dnevnik = 1;
+    krog->napaka_prej = 0;
+    krog->integral = 0;
+    krog->odvod = 0;
   }
 
 }
@@ -552,7 +576,7 @@ void loop() {
   zatemnitev_zaslona();
   preberi_vhodne_signale();
   handle_state_machine();
-  dobi_temperaturo(); //TODO
+  dobi_temperaturo();
 
   if ((millis() - pid_zanka_cas) > 1000) {
     pid_zanka_cas = millis();
