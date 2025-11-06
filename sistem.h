@@ -72,17 +72,4 @@ const unsigned char lcd_shema[] PROGMEM = {
 	0x00, 0x80, 0xff, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfc, 0x3f, 0x00, 0x00
 };
 
-const char *string_list = 
-  "Altocumulus\n"
-  "Altostratus\n"
-  "Cirrocumulus\n"
-  "Cirrostratus\n"
-  "Cirrus\n"
-  "Cumulonimbus\n"
-  "Cumulus\n"
-  "Nimbostratus\n"
-  "Stratocumulus\n"
-  "Stratus\n"
-  "Domov";
-
 #endif  //_SISTEM_H
