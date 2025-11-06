@@ -47,7 +47,7 @@
 #define KD_FAKTOR 100
 
 #define UPOR 1000 // omov
-#define ADC_MAX_VREDNOST 4096
+#define ADC_MAX_VREDNOST 1024
 /* Defines end */
 
 /* Typedefs start */
@@ -352,14 +352,14 @@ float upor;
 void dobi_temperaturo() {
   //uint32_t ain;
 
-  analogReadResolution(12);
+  analogReadResolution(10);
   ain = analogRead(krog1.temp_kroga_pin);
   //Serial.print("Senzor1: ");
   //Serial.println(ain);
   upor = (float)(ain * UPOR) / (float)(ADC_MAX_VREDNOST - ain);
   krog1.temp_kroga = (upor - 1000) * 100 / 385;
 
-  analogReadResolution(12);
+  analogReadResolution(10);
   ain = analogRead(krog2.temp_kroga_pin);
   //Serial.print("Senzor2: ");
   //Serial.println(ain);
@@ -372,35 +372,36 @@ uint8_t pid_zanka(ogrevalni_krog_t *krog) {
   uint8_t ukaz = 0;
   float napaka = (float)krog->temp_zelena - (float)krog->temp_kroga;
 
-  krog->integral += napaka;
+  if (abs(napaka) > krog->mrtvi_hod) {
+    krog->integral += napaka;
 
-  ki_omejitev = 100 / krog->Ki / KI_FAKTOR;
+    ki_omejitev = 100 / krog->Ki / KI_FAKTOR;
 
-  if (krog->integral > ki_omejitev) {
-    krog->integral = ki_omejitev;
+    if (krog->integral > ki_omejitev) {
+      krog->integral = ki_omejitev;
+    }
+    if (krog->integral < -ki_omejitev) {
+      krog->integral = -ki_omejitev;
+    }
+
+    //der = der + 0.05 *(Kd * (napaka - napaka_prej) - der)
+    krog->odvod = napaka - krog->napaka_prej;
+
+    pid_temp = (float)(napaka * krog->Kp * KP_FAKTOR) + (float)(krog->integral * krog->Ki * KI_FAKTOR) + (float)(krog->odvod * krog->Kd * KD_FAKTOR);
+
+    if (pid_temp > krog->temp_kroga) {
+      ukaz = 1;
+    }
+
+    if (pid_temp < krog->temp_kroga) {
+      ukaz = -1;
+    }
+    
+    krog->napaka_prej = napaka;
   }
-  if (krog->integral < -ki_omejitev) {
-    krog->integral = -ki_omejitev;
-  }
-
-  //der = der + 0.05 *(Kd * (napaka - napaka_prej) - der)
-  krog->odvod = napaka - krog->napaka_prej;
-
-  pid_temp = (float)(napaka * krog->Kp * KP_FAKTOR) + (float)(krog->integral * krog->Ki * KI_FAKTOR) + (float)(krog->odvod * krog->Kd * KD_FAKTOR);
-
-  if (abs(krog->temp_kroga - pid_temp) < krog->mrtvi_hod) {
+  else {
     ukaz = 0;
   }
-
-  else if (pid_temp > krog->temp_kroga) {
-    ukaz = 1;
-  }
-
-  else if (pid_temp < krog->temp_kroga) {
-    ukaz = -1;
-  }
-  
-  krog->napaka_prej = napaka;
 
   return ukaz;
 }
@@ -576,10 +577,10 @@ void loop() {
   zatemnitev_zaslona();
   preberi_vhodne_signale();
   handle_state_machine();
-  dobi_temperaturo();
 
   if ((millis() - pid_zanka_cas) > 1000) {
     pid_zanka_cas = millis();
+    dobi_temperaturo();
     krmiljenje_ventilov(&krog1);
     krmiljenje_ventilov(&krog2);
     shrani_dnevnik(&krog1);
