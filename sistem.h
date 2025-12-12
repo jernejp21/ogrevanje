@@ -1,6 +1,58 @@
 #ifndef _SISTEM_H
 #define _SISTEM_H
 
+/* Začetek konfiguracije */
+#define SD_CS PA11
+#define LCD_CS 10
+#define LCD_DC 9
+#define LCD_RES 8
+#define ENC_A 7
+#define ENC_B 6
+#define ENC_BT 5
+#define ENKODER_ROTACIJA_BREZ 0
+#define ENKODER_ROTACIJA_URA 1
+#define ENKODER_ROTACIJA_KONT_URA -1
+#define TEMP_ZALOG_AIN A3
+#define TEMP_KROG_1_AIN A4
+#define TEMP_KROG_2_AIN A5
+#define CRPAKLA_KROG_1_DOUT 4
+#define MES_VENT_HLAD_KROG_1_DOUT 3
+#define MES_VENT_TOPL_KROG_1_DOUT 2
+#define CRPAKLA_KROG_2_DOUT A0
+#define MES_VENT_HLAD_KROG_2_DOUT A1
+#define MES_VENT_TOPL_KROG_2_DOUT A2
+#define TERMOSTAT_VKLOP_KROG1_DIN PC1
+#define TERMOSTAT_VKLOP_KROG2_DIN PC0
+
+#define LOGIKA_VHOD 0  // 0 negativna - nizko stanje za vklop, 1 pozitivna - visoko stanje za vklop
+#define VKLOP_VHOD (LOGIKA_VHOD)
+#define IZKLOP_VHOD (!LOGIKA_VHOD)
+
+#define LOGIKA_IZHOD 0  // 0 negativna - nizko stanje za vklop, 1 pozitivna - visoko stanje za vklop
+#define VKLOP_IZHOD (LOGIKA_IZHOD)
+#define IZKLOP_IZHOD (!LOGIKA_IZHOD)
+
+#define DISPLAY_LED PD9
+#define EKRAN_GLAVNI_ZASLON 0
+#define EKRAN_MENI_ZASLON 1
+
+#define STATE_IDLE 0
+#define STATE_ACTIVE_SCREEN 1
+#define STATE_MENU_SCREEN 2
+#define STATE_LEAVE_MENU 3
+
+
+#define MS_V_MIN (1000*60)
+#define CAS_IZKLOPA_CRPALKE (5*MS_V_MIN)
+#define KP_FAKTOR 10
+#define KI_FAKTOR 0.1
+#define KD_FAKTOR 100
+
+#define UPOR 1000 // omov
+#define ADC_MAX_VREDNOST 1024
+/* Konec konfiguracije */
+
+/* Shema ogrevanja */
 #define LCD_BITMAP_WIDTH 128
 #define LCD_BITMAP_HEIGHT 64
 
@@ -71,5 +123,6 @@ const unsigned char lcd_shema[] PROGMEM = {
 	0x00, 0x80, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x20, 0x00, 0x00, 
 	0x00, 0x80, 0xff, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfc, 0x3f, 0x00, 0x00
 };
+/* Konec sheme ogrevanja */
 
 #endif  //_SISTEM_H

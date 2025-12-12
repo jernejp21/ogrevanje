@@ -9,46 +9,7 @@
 #include "sistem.h"
 /* Includes end */
 
-/* Defines start */
-#define SD_CS PA11
-#define LCD_CS 10
-#define LCD_DC 9
-#define LCD_RES 8
-#define ENC_A 7
-#define ENC_B 6
-#define ENC_BT 5
-#define ENKODER_ROTACIJA_BREZ 0
-#define ENKODER_ROTACIJA_URA 1
-#define ENKODER_ROTACIJA_KONT_URA -1
-#define TEMP_ZALOG_AIN A3
-#define TEMP_KROG_1_AIN A4
-#define TEMP_KROG_2_AIN A5
-#define CRPAKLA_KROG_1_DOUT 4
-#define MES_VENT_HLAD_KROG_1_DOUT 3
-#define MES_VENT_TOPL_KROG_1_DOUT 2
-#define CRPAKLA_KROG_2_DOUT A0
-#define MES_VENT_HLAD_KROG_2_DOUT A1
-#define MES_VENT_TOPL_KROG_2_DOUT A2
-#define TERMOSTAT_VKLOP_KROG1_DIN PC1
-#define TERMOSTAT_VKLOP_KROG2_DIN PC0
 
-#define DISPLAY_LED PD9
-#define EKRAN_GLAVNI_ZASLON 0
-#define EKRAN_MENI_ZASLON 1
-
-#define STATE_IDLE 0
-#define STATE_ACTIVE_SCREEN 1
-#define STATE_MENU_SCREEN 2
-#define STATE_LEAVE_MENU 3
-
-#define MS_V_MIN 1000*60
-#define KP_FAKTOR 10
-#define KI_FAKTOR 0.1
-#define KD_FAKTOR 100
-
-#define UPOR 1000 // omov
-#define ADC_MAX_VREDNOST 1024
-/* Defines end */
 
 /* Typedefs start */
 typedef struct
@@ -75,6 +36,7 @@ typedef struct
   char ime_kroga[8];
   uint8_t st_dnevnika;
   uint8_t povecam_dnevnik;
+  unsigned long int cas;
 } ogrevalni_krog_t;
 /* Typedefs end */
 
@@ -96,7 +58,6 @@ uint8_t cas_vzorcenja = 1;
 float ki_omejitev = 0;
 
 uint8_t state_machine;
-unsigned long int prejsnji_cas;
 uint8_t ali_narisem = 1;
 unsigned long gumb_cas;
 uint8_t g_prikazi_stran;
@@ -304,7 +265,7 @@ void izrisi_stran(void) {
 void zatemnitev_zaslona() {
   if ((millis() - gumb_cas) > cas_zakasnitve * MS_V_MIN && state_machine != STATE_IDLE) {
     state_machine = STATE_IDLE;
-    digitalWrite(DISPLAY_LED, 0);
+    digitalWrite(DISPLAY_LED, IZKLOP_IZHOD);
   }
 }
 
@@ -312,17 +273,17 @@ void handle_state_machine() {
   switch (state_machine) {
     case STATE_IDLE:
       g_prikazi_stran = EKRAN_GLAVNI_ZASLON;
-      digitalWrite(DISPLAY_LED, 0);
+      digitalWrite(DISPLAY_LED, IZKLOP_IZHOD);
       break;
     
     case STATE_ACTIVE_SCREEN:
       g_prikazi_stran = EKRAN_GLAVNI_ZASLON;
-      digitalWrite(DISPLAY_LED, 1);
+      digitalWrite(DISPLAY_LED, VKLOP_IZHOD);
       break;
 
     case STATE_MENU_SCREEN:
       g_prikazi_stran = EKRAN_MENI_ZASLON;
-      digitalWrite(DISPLAY_LED, 1);
+      digitalWrite(DISPLAY_LED, VKLOP_IZHOD);
       if (!mui.isFormActive()) {
         mui.gotoForm(1, 0);
       }
@@ -428,22 +389,22 @@ void narisi_zaslon() {
 }
 
 void krmiljenje_ventilov(ogrevalni_krog_t *krog) {
-  if (krog->termostat_vklop) {
-    digitalWrite(krog->crpalka_pin, HIGH);
+  if (krog->termostat_vklop == VKLOP_VHOD) {
+    digitalWrite(krog->crpalka_pin, VKLOP_IZHOD);
     int8_t ventil_smer = pid_zanka(krog);
     krog->ventil_smer = ventil_smer;
 
     if (ventil_smer == -1) {  // hladna voda
-      digitalWrite(krog->mes_vent_hlad_pin, HIGH);
-      digitalWrite(krog->mes_vent_topl_pin, LOW);
+      digitalWrite(krog->mes_vent_hlad_pin, VKLOP_IZHOD);
+      digitalWrite(krog->mes_vent_topl_pin, IZKLOP_IZHOD);
     }
     if (ventil_smer == 0) {  // pusti ventil v trenutni poziciji
-      digitalWrite(krog->mes_vent_hlad_pin, LOW);
-      digitalWrite(krog->mes_vent_topl_pin, LOW);
+      digitalWrite(krog->mes_vent_hlad_pin, IZKLOP_IZHOD);
+      digitalWrite(krog->mes_vent_topl_pin, IZKLOP_IZHOD);
     }
     if (ventil_smer == 1) {  // topla voda
-      digitalWrite(krog->mes_vent_hlad_pin, LOW);
-      digitalWrite(krog->mes_vent_topl_pin, HIGH);
+      digitalWrite(krog->mes_vent_hlad_pin, IZKLOP_IZHOD);
+      digitalWrite(krog->mes_vent_topl_pin, VKLOP_IZHOD);
     }
   }
   else {
@@ -451,8 +412,14 @@ void krmiljenje_ventilov(ogrevalni_krog_t *krog) {
     // Najprej se mora zapreti mešalni ventil, šele potem se ugasne črpalka.
     // Mešalni ventil se zapira, črpalka pa deluje še 5 min po signalu za izklop.
     //digitalWrite(krog->mes_vent_hlad_pin, LOW);
+    if ((krog->cas - millis()) > CAS_IZKLOPA_CRPALKE) {
+      digitalWrite(krog->mes_vent_hlad_pin, IZKLOP_IZHOD);
+      digitalWrite(krog->crpalka_pin, IZKLOP_IZHOD);
+    }
+    else {
+      digitalWrite(krog->mes_vent_hlad_pin, VKLOP_IZHOD);
+    }
     
-    digitalWrite(krog->crpalka_pin, LOW);
   }
 }
 
@@ -463,11 +430,12 @@ void zapisi_na_kartico(String dnevnik, String zapis) {
         dataFile.println(zapis);
         dataFile.close();
       }
+      Serial.println("Pišem na kartico");
     }
 }
 
 void shrani_dnevnik(ogrevalni_krog_t *krog) {
-  if (krog->termostat_vklop) {
+  if (krog->termostat_vklop == VKLOP_VHOD) {
     String log_name;
     
     String dataString;
@@ -507,26 +475,26 @@ void setup() {
   pinMode(DISPLAY_LED, OUTPUT);
 
   krog1.crpalka_pin = CRPAKLA_KROG_1_DOUT;
-  digitalWrite(CRPAKLA_KROG_1_DOUT, LOW);
+  digitalWrite(CRPAKLA_KROG_1_DOUT, IZKLOP_IZHOD);
   
   krog1.mes_vent_hlad_pin = MES_VENT_HLAD_KROG_1_DOUT;
-  digitalWrite(MES_VENT_HLAD_KROG_1_DOUT, LOW);
+  digitalWrite(MES_VENT_HLAD_KROG_1_DOUT, IZKLOP_IZHOD);
   
   krog1.mes_vent_topl_pin = MES_VENT_TOPL_KROG_1_DOUT;
-  digitalWrite(MES_VENT_TOPL_KROG_1_DOUT, LOW);
+  digitalWrite(MES_VENT_TOPL_KROG_1_DOUT, IZKLOP_IZHOD);
   
   pinMode(CRPAKLA_KROG_1_DOUT, OUTPUT);
   pinMode(MES_VENT_HLAD_KROG_1_DOUT, OUTPUT);
   pinMode(MES_VENT_TOPL_KROG_1_DOUT, OUTPUT);
 
   krog2.crpalka_pin = CRPAKLA_KROG_2_DOUT;
-  digitalWrite(CRPAKLA_KROG_2_DOUT, LOW);
+  digitalWrite(CRPAKLA_KROG_2_DOUT, IZKLOP_IZHOD);
 
   krog2.mes_vent_hlad_pin = MES_VENT_HLAD_KROG_2_DOUT;
-  digitalWrite(MES_VENT_HLAD_KROG_2_DOUT, LOW);
+  digitalWrite(MES_VENT_HLAD_KROG_2_DOUT, IZKLOP_IZHOD);
 
   krog2.mes_vent_topl_pin = MES_VENT_TOPL_KROG_2_DOUT;
-  digitalWrite(MES_VENT_TOPL_KROG_2_DOUT, LOW);
+  digitalWrite(MES_VENT_TOPL_KROG_2_DOUT, IZKLOP_IZHOD);
   
   pinMode(CRPAKLA_KROG_2_DOUT, OUTPUT);
   pinMode(MES_VENT_HLAD_KROG_2_DOUT, OUTPUT);
@@ -538,8 +506,8 @@ void setup() {
   pinMode(TEMP_KROG_2_AIN, INPUT);
   pinMode(TEMP_ZALOG_AIN, INPUT);
 
-  pinMode(TERMOSTAT_VKLOP_KROG1_DIN, INPUT_PULLDOWN);
-  pinMode(TERMOSTAT_VKLOP_KROG2_DIN, INPUT_PULLDOWN);
+  pinMode(TERMOSTAT_VKLOP_KROG1_DIN, INPUT);
+  pinMode(TERMOSTAT_VKLOP_KROG2_DIN, INPUT);
   /* Pin setup end*/
 
   /* Display setup */
