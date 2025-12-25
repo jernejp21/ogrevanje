@@ -2,27 +2,31 @@
 #define _SISTEM_H
 
 /* Začetek konfiguracije */
-#define SD_CS PA11
-#define LCD_CS 10
-#define LCD_DC 9
-#define LCD_RES 8
-#define ENC_A 7
-#define ENC_B 6
-#define ENC_BT 5
+#define SD_CS PD3
+#define LCD_CS PB0
+#define LCD_DC PC7
+#define LCD_RES PA9
+#define ENC_A PD4
+#define ENC_B PA15
+#define ENC_BT PD0
 #define ENKODER_ROTACIJA_BREZ 0
 #define ENKODER_ROTACIJA_URA 1
 #define ENKODER_ROTACIJA_KONT_URA -1
-#define TEMP_ZALOG_AIN A3
-#define TEMP_KROG_1_AIN A4
-#define TEMP_KROG_2_AIN A5
-#define CRPAKLA_KROG_1_DOUT 4
-#define MES_VENT_HLAD_KROG_1_DOUT 3
-#define MES_VENT_TOPL_KROG_1_DOUT 2
-#define CRPAKLA_KROG_2_DOUT A0
-#define MES_VENT_HLAD_KROG_2_DOUT A1
-#define MES_VENT_TOPL_KROG_2_DOUT A2
-#define TERMOSTAT_VKLOP_KROG1_DIN PC1
-#define TERMOSTAT_VKLOP_KROG2_DIN PC0
+#define TEMP_ZALOG_AIN PB1
+#define TEMP_KROG_1_AIN PB11
+#define TEMP_KROG_2_AIN PB12
+#define CRPAKLA_KROG_1_DOUT PB5
+#define MES_VENT_HLAD_KROG_1_DOUT PB3
+#define MES_VENT_TOPL_KROG_1_DOUT PA10
+#define CRPAKLA_KROG_2_DOUT PA8
+#define MES_VENT_HLAD_KROG_2_DOUT PB14
+#define MES_VENT_TOPL_KROG_2_DOUT PB4
+#define TERMOSTAT_VKLOP_KROG1_DIN PC2
+#define TERMOSTAT_VKLOP_KROG2_DIN PC3
+#define CD PB7
+
+#define SD_VSTAVLJENA 0
+#define SD_NI_VSTAVLJENA 1
 
 #define LOGIKA_VHOD 0  // 0 negativna - nizko stanje za vklop, 1 pozitivna - visoko stanje za vklop
 #define VKLOP_VHOD (LOGIKA_VHOD)
@@ -32,7 +36,7 @@
 #define VKLOP_IZHOD (LOGIKA_IZHOD)
 #define IZKLOP_IZHOD (!LOGIKA_IZHOD)
 
-#define DISPLAY_LED PD9
+#define LCD_LED PC13
 #define EKRAN_GLAVNI_ZASLON 0
 #define EKRAN_MENI_ZASLON 1
 
