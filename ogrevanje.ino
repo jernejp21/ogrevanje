@@ -314,21 +314,21 @@ float upor;
 void dobi_temperaturo() {
   //uint32_t ain;
 
-  analogReadResolution(10);
+  analogReadResolution(ADC_RESOLUCIJA);
   ain = analogRead(krog1.temp_kroga_pin);
   //Serial.print("Senzor1: ");
   //Serial.println(ain);
   upor = (float)(ain * UPOR) / (float)(ADC_MAX_VREDNOST - ain);
   krog1.temp_kroga = (upor - 1000) * 100 / 385;
 
-  analogReadResolution(10);
+  analogReadResolution(ADC_RESOLUCIJA);
   ain = analogRead(krog2.temp_kroga_pin);
   //Serial.print("Senzor2: ");
   //Serial.println(ain);
   upor = (float)(ain * UPOR) / (float)(ADC_MAX_VREDNOST - ain);
   krog2.temp_kroga = (upor - 1000) * 100 / 385;
 
-  analogReadResolution(10);
+  analogReadResolution(ADC_RESOLUCIJA);
   ain = analogRead(TEMP_ZALOG_AIN);
   //Serial.print("Senzor2: ");
   //Serial.println(ain);

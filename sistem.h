@@ -53,7 +53,8 @@
 #define KD_FAKTOR 100
 
 #define UPOR 1000 // omov
-#define ADC_MAX_VREDNOST 1024
+#define ADC_RESOLUCIJA 10  // bitov
+#define ADC_MAX_VREDNOST (1 << ADC_RESOLUCIJA)
 /* Konec konfiguracije */
 
 /* Shema ogrevanja */
