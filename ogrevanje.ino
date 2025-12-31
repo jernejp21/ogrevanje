@@ -37,6 +37,7 @@ typedef struct
   uint8_t st_dnevnika;
   uint8_t povecam_dnevnik;
   unsigned long int cas;
+  uint8_t prezracevanje;
 } ogrevalni_krog_t;
 /* Typedefs end */
 
@@ -79,6 +80,7 @@ uint8_t pid_zanka(ogrevalni_krog_t *krog);
 void narisi_zaslon();
 void krmiljenje_ventilov(ogrevalni_krog_t *krog);
 void shrani_dnevnik(ogrevalni_krog_t *krog);
+void prezracevanje(ogrevalni_krog_t *krog);
 /* Functions prototypes end */
 
 /* MUI definition */
@@ -104,11 +106,14 @@ muif_t muif_list[] = {
   MUIF_U8G2_U8_MIN_MAX("T2", &krog2.temp_zelena, 15, 80, mui_u8g2_u8_min_max_wm_mud_pi),
 
   MUIF_U8G2_U8_MIN_MAX("TZ", &cas_zakasnitve, 0, 60, mui_u8g2_u8_min_max_wm_mud_pi),
-  MUIF_U8G2_S8_MIN_MAX("TH", &temp_hranilnika, 20, 80, mui_u8g2_u8_min_max_wm_mud_pi),
+  MUIF_U8G2_S8_MIN_MAX("TH", &temp_hranilnika_zelena, 20, 80, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_U8_MIN_MAX("MH", &krog1.mrtvi_hod, 0, 5, mui_u8g2_u8_min_max_wm_mud_pi),
 
+  MUIF_VARIABLE("C1", &krog1.prezracevanje, mui_u8g2_u8_chkbox_wm_pi),
+  MUIF_VARIABLE("C2", &krog2.prezracevanje, mui_u8g2_u8_chkbox_wm_pi),
+
   /* a button for the menu... */
-  MUIF_BUTTON("GO", mui_u8g2_btn_goto_wm_fi),
+  MUIF_BUTTON("GT", mui_u8g2_btn_goto_wm_fi),
   MUIF_BUTTON("BK", mui_u8g2_btn_back_wm_fi),
   MUIF_RO("EX", izhod_iz_menija)
 };
@@ -124,6 +129,7 @@ fds_t fds_data[] =
     MUI_20 "Krog 1|"
     MUI_21 "Krog 2|"
     MUI_30 "Nastavitve|"
+    MUI_40 "Info|"
     MUI_250 "Izhod")
   MUI_XYA("GC", 5, 24, 0)
   MUI_XYA("GC", 5, 36, 1)
@@ -164,7 +170,7 @@ fds_t fds_data[] =
   
   MUI_FORM(30)
   MUI_STYLE(1)
-  MUI_LABEL(5, 8, "Nastavitve")
+  MUI_LABEL(5, 8, "Nastavitve 1/2")
   MUI_STYLE(0)
   MUI_XY("HR", 0, 11)
   MUI_LABEL(5, 23, "Čas zaslona:")
@@ -176,7 +182,30 @@ fds_t fds_data[] =
   MUI_XY("TZ", 70, 23)
   MUI_XY("TH", 85, 35)
   MUI_XY("MH", 58, 47)
-  MUI_XYT("BK", 20, 60, " Nazaj ")
+  MUI_XYAT("GT", 20, 60, 1, " Nazaj ")
+  MUI_XYAT("GT", 100, 60, 31, " Naprej ")
+
+  MUI_FORM(31)
+  MUI_STYLE(1)
+  MUI_LABEL(5, 8, "Nastavitve 2/2")
+  MUI_STYLE(0)
+  MUI_XY("HR", 0, 11)
+  MUI_LABEL(5, 23, "Prezračevanje K1:")
+  MUI_LABEL(5, 35, "Prezračevanje K2:")
+  MUI_XY("C1", 90, 23)
+  MUI_XY("C2", 90, 35)
+  MUI_XYAT("GT", 20, 60, 30, " Nazaj ")
+  MUI_XYAT("GT", 100, 60, 1, " Naprej ")
+
+
+  MUI_FORM(40)
+  MUI_STYLE(1)
+  MUI_LABEL(5, 8, "Info")
+  MUI_STYLE(0)
+  MUI_XY("HR", 0, 11)
+  MUI_LABEL(5, 23, "Verzija:")
+  MUI_LABEL(70, 23, VERZIJA)
+  MUI_XYT("BK", 110, 60, " Nazaj ")
   
   MUI_FORM(250)
   MUI_STYLE(0)
@@ -479,6 +508,13 @@ void shrani_dnevnik(ogrevalni_krog_t *krog) {
 
 }
 
+void prezracevanje(ogrevalni_krog_t *krog)
+{
+  if(krog->prezracevanje) {
+    digitalWrite(krog->crpalka_pin, VKLOP_IZHOD);
+  }
+}
+
 void setup() {
   // put your setup code here, to run once:
 
@@ -541,13 +577,13 @@ void setup() {
   krog1.Kp = 3;
   krog1.Ki = 10;
   krog1.Kd = 2;
-  krog1.temp_zelena = 45;
+  krog1.temp_zelena = 40;
   krog1.mrtvi_hod = 2;
 
   krog2.Kp = 1;
   krog2.Ki = 3;
   krog2.Kd = 1;
-  krog2.temp_zelena = 28;
+  krog2.temp_zelena = 32;
   krog2.mrtvi_hod = 2;
 
   Serial.begin(115200);
@@ -566,6 +602,8 @@ void loop() {
     dobi_temperaturo();
     krmiljenje_ventilov(&krog1);
     krmiljenje_ventilov(&krog2);
+    prezracevanje(&krog1);
+    prezracevanje(&krog2);
     shrani_dnevnik(&krog1);
     shrani_dnevnik(&krog2);
     ali_narisem = 1;

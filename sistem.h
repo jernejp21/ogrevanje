@@ -1,6 +1,8 @@
 #ifndef _SISTEM_H
 #define _SISTEM_H
 
+#define VERZIJA "V3"
+
 /* Začetek konfiguracije */
 #define SD_CS PD3
 #define LCD_CS PB0
