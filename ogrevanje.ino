@@ -50,9 +50,10 @@ Versatile_RotaryEncoder encoder(ENC_A, ENC_B, ENC_BT);
 int8_t enkoder_smer;
 int8_t enkoder_gumb_pritisnjen;
 
-ogrevalni_krog_t krog1 = {.ime_kroga="krog1", .cas=0x7FFFFFFF};
-ogrevalni_krog_t krog2 = {.ime_kroga="krog2", .cas=0x7FFFFFFF};
-int8_t temp_hranilnika = 40;
+ogrevalni_krog_t krog1 = {.ime_kroga="krog1", .povecam_dnevnik=1, .cas=0x7FFFFFFF};
+ogrevalni_krog_t krog2 = {.ime_kroga="krog2", .povecam_dnevnik=1, .cas=0x7FFFFFFF};
+int8_t temp_hranilnika;
+int8_t temp_hranilnika_zelena = 40;
 uint8_t cas_zakasnitve = 1; // v minutah
 uint8_t cas_vzorcenja = 1;
 float ki_omejitev = 0;
@@ -433,7 +434,8 @@ void krmiljenje_ventilov(ogrevalni_krog_t *krog) {
 }
 
 void zapisi_na_kartico(String dnevnik, String zapis) {
-  if (SD.begin(SD_CS)) {
+  uint8_t kartica_vstavljena = digitalRead(CD);
+  if (SD.begin(SD_CS) && (kartica_vstavljena == SD_VSTAVLJENA)) {
       File dataFile = SD.open(dnevnik, FILE_WRITE);
       if (dataFile) {
         dataFile.println(zapis);
@@ -445,7 +447,7 @@ void zapisi_na_kartico(String dnevnik, String zapis) {
 
 void shrani_dnevnik(ogrevalni_krog_t *krog) {
   uint8_t kartica_vstavljena = digitalRead(CD);
-  if (krog->termostat_vklop == VKLOP_VHOD && kartica_vstavljena == SD_VSTAVLJENA) {
+  if ((krog->termostat_vklop == VKLOP_VHOD) && (kartica_vstavljena == SD_VSTAVLJENA)) {
     String log_name;
     
     String dataString;
