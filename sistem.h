@@ -1,7 +1,7 @@
 #ifndef _SISTEM_H
 #define _SISTEM_H
 
-#define VERZIJA "V3"
+#define VERZIJA "V2.99"
 
 /* Začetek konfiguracije */
 #define SD_CS PD3
@@ -14,7 +14,7 @@
 #define ENKODER_ROTACIJA_BREZ 0
 #define ENKODER_ROTACIJA_URA 1
 #define ENKODER_ROTACIJA_KONT_URA -1
-#define TEMP_ZALOG_AIN PB1
+#define TEMP_HRANIL_AIN PB1
 #define TEMP_KROG_1_AIN PB11
 #define TEMP_KROG_2_AIN PB12
 #define CRPAKLA_KROG_1_DOUT PB5
@@ -55,8 +55,8 @@
 #define KD_FAKTOR 100
 
 #define UPOR 1000 // omov
-#define ADC_RESOLUCIJA 10  // bitov
-#define ADC_MAX_VREDNOST (1 << ADC_RESOLUCIJA)
+#define ADC_RESOLUCIJA 12  // bitov
+#define ADC_MAX_VREDNOST ((1 << ADC_RESOLUCIJA) - 1)
 /* Konec konfiguracije */
 
 /* Shema ogrevanja */

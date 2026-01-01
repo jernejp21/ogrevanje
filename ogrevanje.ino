@@ -53,14 +53,14 @@ int8_t enkoder_gumb_pritisnjen;
 
 ogrevalni_krog_t krog1 = {.ime_kroga="krog1", .povecam_dnevnik=1, .cas=0x7FFFFFFF};
 ogrevalni_krog_t krog2 = {.ime_kroga="krog2", .povecam_dnevnik=1, .cas=0x7FFFFFFF};
-int8_t temp_hranilnika;
-int8_t temp_hranilnika_zelena = 40;
-uint8_t cas_zakasnitve = 1; // v minutah
-uint8_t cas_vzorcenja = 1;
-float ki_omejitev = 0;
+float temp_hranilnika;
+int8_t temp_hranilnika_zelena;
+uint8_t cas_zakasnitve;  // v minutah
+uint8_t cas_vzorcenja;  // v sekundah
+float ki_omejitev;
 
 uint8_t state_machine;
-uint8_t ali_narisem = 1;
+uint8_t ali_narisem;
 unsigned long gumb_cas;
 uint8_t g_prikazi_stran;
 /* Global variables declarations end */
@@ -75,7 +75,7 @@ void izrisi_stran(void);
 void zatemnitev_zaslona();
 void handle_state_machine();
 void preberi_vhodne_signale();
-void dobi_temperaturo();
+float dobi_temperaturo(uint32_t adc_meritev);
 uint8_t pid_zanka(ogrevalni_krog_t *krog);
 void narisi_zaslon();
 void krmiljenje_ventilov(ogrevalni_krog_t *krog);
@@ -264,7 +264,7 @@ void narisi_glaven_zaslon() {
   u8g2.drawXBMP(0, 0, LCD_BITMAP_WIDTH, LCD_BITMAP_HEIGHT, lcd_shema);
   u8g2.setCursor(0, 8);
   u8g2.print("T3= ");
-  u8g2.print(temp_hranilnika);
+  u8g2.print((int)temp_hranilnika);
   u8g2.print("°C");
   u8g2.print(" T4= ");
   u8g2.print((int)(krog1.temp_kroga));
@@ -338,31 +338,13 @@ void preberi_vhodne_signale() {
   krog2.termostat_vklop = digitalRead(TERMOSTAT_VKLOP_KROG2_DIN);
   encoder.ReadEncoder();
 }
-uint32_t ain;
+
 float upor;
-void dobi_temperaturo() {
-  //uint32_t ain;
-
-  analogReadResolution(ADC_RESOLUCIJA);
-  ain = analogRead(krog1.temp_kroga_pin);
-  //Serial.print("Senzor1: ");
-  //Serial.println(ain);
-  upor = (float)(ain * UPOR) / (float)(ADC_MAX_VREDNOST - ain);
-  krog1.temp_kroga = (upor - 1000) * 100 / 385;
-
-  analogReadResolution(ADC_RESOLUCIJA);
-  ain = analogRead(krog2.temp_kroga_pin);
-  //Serial.print("Senzor2: ");
-  //Serial.println(ain);
-  upor = (float)(ain * UPOR) / (float)(ADC_MAX_VREDNOST - ain);
-  krog2.temp_kroga = (upor - 1000) * 100 / 385;
-
-  analogReadResolution(ADC_RESOLUCIJA);
-  ain = analogRead(TEMP_ZALOG_AIN);
-  //Serial.print("Senzor2: ");
-  //Serial.println(ain);
-  upor = (float)(ain * UPOR) / (float)(ADC_MAX_VREDNOST - ain);
-  temp_hranilnika = (upor - 1000) * 100 / 385;
+float dobi_temperaturo(uint32_t adc_meritev) {
+  float temp = 0;
+  upor = (float)(adc_meritev * UPOR) / (float)(ADC_MAX_VREDNOST - adc_meritev);
+  temp = (upor - 1000) * 100 / 385;
+  return temp;
 }
 
 float pid_temp;
@@ -549,9 +531,9 @@ void setup() {
   krog2.mes_vent_topl_pin = MES_VENT_TOPL_KROG_2_DOUT;
   digitalWrite(MES_VENT_TOPL_KROG_2_DOUT, IZKLOP_IZHOD);
 
-  pinMode(TEMP_KROG_1_AIN, INPUT);
-  pinMode(TEMP_KROG_2_AIN, INPUT);
-  pinMode(TEMP_ZALOG_AIN, INPUT);
+  pinMode(TEMP_KROG_1_AIN, INPUT_ANALOG);
+  pinMode(TEMP_KROG_2_AIN, INPUT_ANALOG);
+  pinMode(TEMP_HRANIL_AIN, INPUT_ANALOG);
 
   pinMode(TERMOSTAT_VKLOP_KROG1_DIN, INPUT);
   pinMode(TERMOSTAT_VKLOP_KROG2_DIN, INPUT);
@@ -586,6 +568,12 @@ void setup() {
   krog2.temp_zelena = 32;
   krog2.mrtvi_hod = 2;
 
+  temp_hranilnika_zelena = 40;
+  cas_zakasnitve = 5;  // v minutah
+  cas_vzorcenja = 1;  // v sekundah
+
+  ali_narisem = 1;
+
   Serial.begin(115200);
   Serial.println("Začetek programa.");
 }
@@ -593,13 +581,50 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   static unsigned long int pid_zanka_cas = 0;
+  static unsigned long int temp_zanka_cas = 0;
+  static uint32_t povp_krog1 = 0;
+  static uint32_t povp_krog2 = 0;
+  static uint32_t povp_hranil = 0;
+  static uint32_t st_meritev = 0;
+  static uint8_t temp_je_pripravljena = 0;
+
   zatemnitev_zaslona();
   preberi_vhodne_signale();
   handle_state_machine();
 
-  if ((millis() - pid_zanka_cas) > 1000) {
+  if ((millis() - temp_zanka_cas) > 10) {
+    temp_zanka_cas = millis();
+    analogReadResolution(ADC_RESOLUCIJA);
+    povp_krog1 += analogRead(krog1.temp_kroga_pin);
+    povp_krog2 += analogRead(krog2.temp_kroga_pin);
+    povp_hranil += analogRead(TEMP_HRANIL_AIN);
+
+    st_meritev++;
+    if (st_meritev > 10) {
+      temp_je_pripravljena = 1;
+    }
+  }
+
+  if (((millis() - pid_zanka_cas) > cas_vzorcenja * 1000) && temp_je_pripravljena) {
     pid_zanka_cas = millis();
-    dobi_temperaturo();
+
+    povp_krog1 = povp_krog1 / st_meritev;
+    povp_krog2 = povp_krog2 / st_meritev;
+    povp_hranil = povp_hranil / st_meritev;
+    krog1.temp_kroga = dobi_temperaturo(povp_krog1);
+    krog2.temp_kroga = dobi_temperaturo(povp_krog2);
+    temp_hranilnika = dobi_temperaturo(povp_hranil);
+    Serial.print("Krog 1: ");
+    Serial.println(krog1.temp_kroga);
+    Serial.print("Krog 2: ");
+    Serial.println(krog2.temp_kroga);
+    Serial.print("Hranilnik: ");
+    Serial.println(temp_hranilnika);
+    st_meritev = 0;
+    povp_krog1 = 0;
+    povp_krog2 = 0;
+    povp_hranil = 0;
+
     krmiljenje_ventilov(&krog1);
     krmiljenje_ventilov(&krog2);
     prezracevanje(&krog1);
@@ -607,6 +632,7 @@ void loop() {
     shrani_dnevnik(&krog1);
     shrani_dnevnik(&krog2);
     ali_narisem = 1;
+    temp_je_pripravljena = 0;
   }
 
   narisi_zaslon();
