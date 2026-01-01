@@ -24,7 +24,7 @@ typedef struct
   //uint8_t termostat_vklop_pin;
   float temp_kroga;
   uint8_t temp_kroga_pin;
-  uint8_t temp_zelena;
+  uint8_t temp_zeljena;
   uint8_t Kp;
   uint8_t Ki;
   uint8_t Kd;
@@ -54,7 +54,7 @@ int8_t enkoder_gumb_pritisnjen;
 ogrevalni_krog_t krog1 = {.ime_kroga="krog1", .povecam_dnevnik=1, .cas=0x7FFFFFFF};
 ogrevalni_krog_t krog2 = {.ime_kroga="krog2", .povecam_dnevnik=1, .cas=0x7FFFFFFF};
 float temp_hranilnika;
-int8_t temp_hranilnika_zelena;
+int8_t temp_hranilnika_zeljena;
 uint8_t cas_zakasnitve;  // v minutah
 uint8_t cas_vzorcenja;  // v sekundah
 float ki_omejitev;
@@ -98,19 +98,21 @@ muif_t muif_list[] = {
   MUIF_U8G2_U8_MIN_MAX("P1", &krog1.Kp, 1, 10, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_U8_MIN_MAX("I1", &krog1.Ki, 1, 10, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_U8_MIN_MAX("D1", &krog1.Kd, 0, 10, mui_u8g2_u8_min_max_wm_mud_pi),
-  MUIF_U8G2_U8_MIN_MAX("T1", &krog1.temp_zelena, 15, 80, mui_u8g2_u8_min_max_wm_mud_pi),
+  MUIF_U8G2_U8_MIN_MAX("T1", &krog1.temp_zeljena, 15, 80, mui_u8g2_u8_min_max_wm_mud_pi),
 
   MUIF_U8G2_U8_MIN_MAX("P2", &krog2.Kp, 1, 10, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_U8_MIN_MAX("I2", &krog2.Ki, 1, 10, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_U8_MIN_MAX("D2", &krog2.Kd, 0, 10, mui_u8g2_u8_min_max_wm_mud_pi),
-  MUIF_U8G2_U8_MIN_MAX("T2", &krog2.temp_zelena, 15, 80, mui_u8g2_u8_min_max_wm_mud_pi),
+  MUIF_U8G2_U8_MIN_MAX("T2", &krog2.temp_zeljena, 15, 80, mui_u8g2_u8_min_max_wm_mud_pi),
 
   MUIF_U8G2_U8_MIN_MAX("TZ", &cas_zakasnitve, 0, 60, mui_u8g2_u8_min_max_wm_mud_pi),
-  MUIF_U8G2_S8_MIN_MAX("TH", &temp_hranilnika_zelena, 20, 80, mui_u8g2_u8_min_max_wm_mud_pi),
+  MUIF_U8G2_S8_MIN_MAX("TH", &temp_hranilnika_zeljena, 20, 80, mui_u8g2_u8_min_max_wm_mud_pi),
   MUIF_U8G2_U8_MIN_MAX("MH", &krog1.mrtvi_hod, 0, 5, mui_u8g2_u8_min_max_wm_mud_pi),
 
   MUIF_VARIABLE("C1", &krog1.prezracevanje, mui_u8g2_u8_chkbox_wm_pi),
   MUIF_VARIABLE("C2", &krog2.prezracevanje, mui_u8g2_u8_chkbox_wm_pi),
+
+  MUIF_U8G2_U8_MIN_MAX("TV", &cas_vzorcenja, 1, 10, mui_u8g2_u8_min_max_wm_mud_pi),
 
   /* a button for the menu... */
   MUIF_BUTTON("GT", mui_u8g2_btn_goto_wm_fi),
@@ -192,8 +194,10 @@ fds_t fds_data[] =
   MUI_XY("HR", 0, 11)
   MUI_LABEL(5, 23, "Prezračevanje K1:")
   MUI_LABEL(5, 35, "Prezračevanje K2:")
+  MUI_LABEL(5, 47, "Čas vzorčenja:")
   MUI_XY("C1", 90, 23)
   MUI_XY("C2", 90, 35)
+  MUI_XY("TV", 90, 47)
   MUI_XYAT("GT", 20, 60, 30, " Nazaj ")
   MUI_XYAT("GT", 100, 60, 1, " Naprej ")
 
@@ -264,13 +268,13 @@ void narisi_glaven_zaslon() {
   u8g2.drawXBMP(0, 0, LCD_BITMAP_WIDTH, LCD_BITMAP_HEIGHT, lcd_shema);
   u8g2.setCursor(0, 8);
   u8g2.print("T3= ");
-  u8g2.print((int)temp_hranilnika);
+  u8g2.print((int)round(temp_hranilnika));
   u8g2.print("°C");
   u8g2.print(" T4= ");
-  u8g2.print((int)(krog1.temp_kroga));
+  u8g2.print((int)round(krog1.temp_kroga));
   u8g2.print("°C");
   u8g2.print(" T6= ");
-  u8g2.print((int)(krog2.temp_kroga));
+  u8g2.print((int)round(krog2.temp_kroga));
   u8g2.print("°C");
 }
 
@@ -350,7 +354,7 @@ float dobi_temperaturo(uint32_t adc_meritev) {
 float pid_temp;
 uint8_t pid_zanka(ogrevalni_krog_t *krog) {
   uint8_t ukaz = 0;
-  float napaka = (float)krog->temp_zelena - (float)krog->temp_kroga;
+  float napaka = (float)krog->temp_zeljena - (float)krog->temp_kroga;
 
   if (abs(napaka) > krog->mrtvi_hod) {
     krog->integral += napaka;
@@ -462,7 +466,7 @@ void shrani_dnevnik(ogrevalni_krog_t *krog) {
     String log_name;
     
     String dataString;
-    dataString += String(krog->temp_zelena);
+    dataString += String(krog->temp_zeljena);
     dataString += ",";
     dataString += String(krog->temp_kroga);
     dataString += ",";
@@ -471,7 +475,7 @@ void shrani_dnevnik(ogrevalni_krog_t *krog) {
     if (krog->povecam_dnevnik) {
       krog->st_dnevnika++;
       krog->povecam_dnevnik = 0;
-      String csv_glava = "T_zelena,T_tren,ventil";
+      String csv_glava = "T_zeljena,T_tren,ventil";
       log_name = krog->ime_kroga;
       log_name += "_" + String(krog->st_dnevnika) + ".csv";
       zapisi_na_kartico(log_name, csv_glava);
@@ -559,18 +563,18 @@ void setup() {
   krog1.Kp = 3;
   krog1.Ki = 10;
   krog1.Kd = 2;
-  krog1.temp_zelena = 40;
+  krog1.temp_zeljena = 42;
   krog1.mrtvi_hod = 2;
 
   krog2.Kp = 1;
   krog2.Ki = 3;
   krog2.Kd = 1;
-  krog2.temp_zelena = 32;
+  krog2.temp_zeljena = 28;
   krog2.mrtvi_hod = 2;
 
-  temp_hranilnika_zelena = 40;
+  temp_hranilnika_zeljena = 35;
   cas_zakasnitve = 5;  // v minutah
-  cas_vzorcenja = 1;  // v sekundah
+  cas_vzorcenja = 5;  // v sekundah
 
   ali_narisem = 1;
 
@@ -582,6 +586,7 @@ void loop() {
   // put your main code here, to run repeatedly:
   static unsigned long int pid_zanka_cas = 0;
   static unsigned long int temp_zanka_cas = 0;
+  static unsigned long int ventili_zanka_cas = 0;
   static uint32_t povp_krog1 = 0;
   static uint32_t povp_krog2 = 0;
   static uint32_t povp_hranil = 0;
@@ -614,25 +619,55 @@ void loop() {
     krog1.temp_kroga = dobi_temperaturo(povp_krog1);
     krog2.temp_kroga = dobi_temperaturo(povp_krog2);
     temp_hranilnika = dobi_temperaturo(povp_hranil);
-    Serial.print("Krog 1: ");
+    /*Serial.print("Krog 1: ");
     Serial.println(krog1.temp_kroga);
     Serial.print("Krog 2: ");
     Serial.println(krog2.temp_kroga);
     Serial.print("Hranilnik: ");
-    Serial.println(temp_hranilnika);
+    Serial.println(temp_hranilnika);*/
     st_meritev = 0;
     povp_krog1 = 0;
     povp_krog2 = 0;
     povp_hranil = 0;
 
-    krmiljenje_ventilov(&krog1);
-    krmiljenje_ventilov(&krog2);
+    if (temp_hranilnika > (int)round(temp_hranilnika_zeljena)) {
+      krmiljenje_ventilov(&krog1);
+      krmiljenje_ventilov(&krog2);
+    }
+    else if (temp_hranilnika == (int)round(temp_hranilnika_zeljena)) {
+      digitalWrite(krog1.mes_vent_topl_pin, IZKLOP_IZHOD);
+      digitalWrite(krog1.mes_vent_hlad_pin, IZKLOP_IZHOD);
+
+      digitalWrite(krog2.mes_vent_topl_pin, IZKLOP_IZHOD);
+      digitalWrite(krog2.mes_vent_hlad_pin, IZKLOP_IZHOD);
+    }
+    else {
+      if (krog1.termostat_vklop == VKLOP_VHOD) {
+        digitalWrite(krog1.mes_vent_topl_pin, IZKLOP_IZHOD);
+        digitalWrite(krog1.mes_vent_hlad_pin, VKLOP_IZHOD);
+      }
+
+      if (krog2.termostat_vklop == VKLOP_VHOD) {
+        digitalWrite(krog2.mes_vent_topl_pin, IZKLOP_IZHOD);
+        digitalWrite(krog2.mes_vent_hlad_pin, VKLOP_IZHOD);
+      }
+    }
+
     prezracevanje(&krog1);
     prezracevanje(&krog2);
     shrani_dnevnik(&krog1);
     shrani_dnevnik(&krog2);
     ali_narisem = 1;
     temp_je_pripravljena = 0;
+    ventili_zanka_cas = millis();
+  }
+
+  if ((millis() - ventili_zanka_cas) > 1000) {
+    digitalWrite(krog1.mes_vent_topl_pin, IZKLOP_IZHOD);
+    digitalWrite(krog1.mes_vent_hlad_pin, IZKLOP_IZHOD);
+
+    digitalWrite(krog2.mes_vent_topl_pin, IZKLOP_IZHOD);
+    digitalWrite(krog2.mes_vent_hlad_pin, IZKLOP_IZHOD);
   }
 
   narisi_zaslon();
